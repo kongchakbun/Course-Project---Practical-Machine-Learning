@@ -1,0 +1,128 @@
+---
+title: 'Course Project: Practical Machine Learning'
+author: "Bryan Kong Chak Bun"
+date: "September 2, 2019"
+output:
+  html_document:
+    df_print: paged
+---
+
+#Introduction
+This project made use of the data of body movement for trying to have the Human Activity Recognition.  Some basic predictive models, such as random forest, generalized boosted regression and trees, had been applied for prediction.
+
+##Getting and cleaning Data
+
+Data was downloaded from the links of the course materials.  
+
+```{r data download}
+fileUrl1 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+fileUrl2 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(fileUrl1, destfile = "./pmlTraining.csv")
+download.file(fileUrl2, destfile = "./pmlTesting.csv")
+pmlTraining <- read.csv("./pmlTraining.csv")
+pmlTesting <- read.csv("./pmlTesting.csv")
+summary(pmlTraining$"classe")   
+```
+
+R packages were loaded for prediction.
+```{r packages loaded}
+library(caret)
+library(randomForest)
+library(rattle)
+library(rpart)
+```
+We needed to check the number of varialbes in the training and testing files.
+```{r check the variables }
+cbind(names(pmlTraining), names(pmlTesting))
+```
+From above exercise, we learnt that variable "classes" is available in the training data but not in the testing data.
+
+To clean the data, we needed to eliminate those columns with near zero variance and columns with NA in both the training and testing data.
+```{r removing nzv and NA}
+#removing the nzv in training data
+nzvTraining <- nearZeroVar(pmlTraining)
+training <- pmlTraining[ , -nzvTraining]
+
+#removing the nzv in the testing data 
+nzvTesting <- nearZeroVar(pmlTesting)
+testing <- pmlTesting[ , - nzvTesting]
+
+#removing the NA in the training data
+idenNATraining <- sapply(training, function(x) mean(is.na(x))>0.95)
+training <- training[, idenNATraining == FALSE]
+
+#removing the NA in the testing data
+idenNATesting <- sapply(testing, function(x) mean(is.na(x))>0.95)
+pmlTraining <- testing[, idenNATesting == FALSE]
+
+cbind(names(training), names(testing))
+```
+We need to separate the training data for cross validation. 
+```{r prepare the validation data}
+inTrain <- createDataPartition(training$classe, p = 0.7, list = FALSE)
+training <- training[inTrain, ]
+validation <- training[-inTrain,]
+```
+
+We noticed that the variable of "problem_id" in the test data was useless for prediction and should be removed.  Moreover, we wanted to add a colume of "classe" in the test data for the prediction purpose.
+```{r removal of problem_id and adding the classe column}
+testing <- testing[, 1:58]
+classe <- rep(NA, nrow(testing))
+testing <- cbind(testing, classe)
+```
+The first five variables in the data files are were not useful for prediction.  We removed these columns from the files.
+```{r  removal the useless variables}
+testing <- testing[, -(1:5)]
+training <- training[, -(1:5)]
+validation <- validation[, -(1:5)]
+```
+Having cleaned the data, we could have the prediction processes.
+
+##Prediction Processes
+
+###Prediction with Generalized Boosting Regression
+```{r prediction with generalized boosting regression}
+trControl <- trainControl(method = "cv", number = 2)
+
+modFit1 <- train(classe~., data = training, method = "gbm", trControl = trControl, verbose = FALSE)
+pred1 <- predict(modFit1, training)
+result1 <- confusionMatrix(pred1, training$classe)
+result1
+```
+###Prediction with Random Forest
+```{r prediction with random forest}
+modFit2 <- train(classe~., data = training, method = "rf", trControl = trControl)
+pred2 <- predict(modFit2, training)
+result2 <- confusionMatrix(pred2, training$classe)
+result2
+```
+###Prediction with Trees
+```{r prediction with Trees}
+modFit3 <- rpart(classe~., data = training, method = "class")
+pred3 <- predict(modFit3, newdata = training, type = "class")
+result3 <- confusionMatrix(pred3, training$classe)
+result3
+#plot the tree
+fancyRpartPlot(modFit3, caption = "Prediction with Tree")
+```
+
+##Cross Validation.
+From above process, we learnt that the random forest had the highest level of accuracy.  The tree prediction had the fast speed.  We decided use the random forest model to have cross validation.
+```{r fiting the tree model to the validation data}
+predValid4 <- predict(modFit2, newdata = validation)
+resultValid4 <- confusionMatrix(predValid4, validation$classe)
+resultValid4
+```
+
+The results showed the random forest model prediction had a very high level of accuracy that we could apply it in the test data. 
+
+##Prediction with Testing Data
+We only have 20 observations in the testing data with the random forest. 
+```{r applying tree model to predict the test data}
+predTest <- predict(modFit2, newdata = testing)
+```
+The prediction result was shown as follows.
+```{r prediction result}
+predTest
+summary(predTest)
+```
